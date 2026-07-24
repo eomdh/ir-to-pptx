@@ -56,12 +56,57 @@ class Kpi:
     tiles: list[KpiTile]
 
 
-Block = Heading | Bullet | Paragraph | Image | Chart | Kpi
+@dataclass
+class Columns:
+    columns: list[list[Block]]
+
+
+Block = Heading | Bullet | Paragraph | Image | Chart | Kpi | Columns
 
 _md = MarkdownIt("commonmark")
 
 
 def parse_markdown(text: str) -> list[Block]:
+    # 컬럼 영역(::: columns ... :::)만 먼저 떼어내 각 칸을 따로 파싱하고,
+    # 나머지 보통 텍스트는 markdown-it 로 파싱한다.
+    blocks: list[Block] = []
+    for kind, payload in _segments(text):
+        if kind == "columns":
+            blocks.append(Columns(columns=[_parse_plain(part) for part in payload]))
+        else:
+            blocks.extend(_parse_plain(payload))
+    return blocks
+
+
+def _segments(text: str):
+    # ("text", 문자열) 또는 ("columns", [칸별 문자열]) 을 문서 순서대로 낸다.
+    # 칸 구분은 || 한 줄, 블록 여닫이는 ::: columns / ::: 한 줄이다.
+    lines = text.split("\n")
+    buf: list[str] = []
+    i = 0
+    while i < len(lines):
+        if lines[i].strip() == "::: columns":
+            if buf:
+                yield ("text", "\n".join(buf))
+                buf = []
+            i += 1
+            cols: list[list[str]] = [[]]
+            while i < len(lines) and lines[i].strip() != ":::":
+                if lines[i].strip() == "||":
+                    cols.append([])
+                else:
+                    cols[-1].append(lines[i])
+                i += 1
+            i += 1  # 닫는 ::: 건너뛰기
+            yield ("columns", ["\n".join(c) for c in cols])
+        else:
+            buf.append(lines[i])
+            i += 1
+    if buf:
+        yield ("text", "\n".join(buf))
+
+
+def _parse_plain(text: str) -> list[Block]:
     tokens = _md.parse(text)
     blocks: list[Block] = []
 

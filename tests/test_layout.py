@@ -45,6 +45,20 @@ def test_긴_불릿_목록은_넘치면_다음_슬라이드로_이어진다():
     assert total == 40
 
 
+def test_2단_컬럼은_왼쪽_오른쪽에_나란히_배치된다():
+    md = "# 두 단\n\n::: columns\n- 왼쪽 A\n- 왼쪽 B\n||\n- 오른쪽 A\n:::\n"
+    els = layout(md).slides[0].elements
+
+    bullets = [e for e in els if e.type == "text" and e.bullet]
+    left = [b for b in bullets if b.text.startswith("왼쪽")]
+    right = [b for b in bullets if b.text.startswith("오른쪽")]
+    assert len(left) == 2 and len(right) == 1
+    # 오른쪽 칸은 왼쪽 칸보다 오른쪽에 있다.
+    assert min(r.x for r in right) > max(b.x for b in left)
+    # 두 칸의 첫 줄은 같은 높이에서 시작한다.
+    assert left[0].y == right[0].y
+
+
 def test_같은_마크다운은_같은_좌표를_낸다():
     # 결정성 = "보이는 대로 나온다"의 뿌리. DOM 미리보기와 pptx 가 같은 IR 을
     # 받으려면 같은 입력이 항상 같은 좌표여야 한다.

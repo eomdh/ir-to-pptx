@@ -14,7 +14,19 @@
 
 from __future__ import annotations
 
-from ir_pptx.blocks import Block, Bullet, Chart, Heading, Image, Kpi, Paragraph, parse_markdown
+from typing import NamedTuple
+
+from ir_pptx.blocks import (
+    Block,
+    Bullet,
+    Chart,
+    Columns,
+    Heading,
+    Image,
+    Kpi,
+    Paragraph,
+    parse_markdown,
+)
 from ir_pptx.ir import (
     Deck,
     ImageElement,
@@ -29,6 +41,14 @@ SLIDE_H = 5.625
 
 MARGIN_X = 0.6
 CONTENT_W = SLIDE_W - 2 * MARGIN_X  # 8.8
+COL_GAP = 0.3  # 2단 컬럼 사이 간격
+
+
+class Region(NamedTuple):
+    """블록을 놓을 가로 영역. x = 왼쪽 좌표, w = 너비."""
+
+    x: float
+    w: float
 
 # 제목 영역
 TITLE_Y = 0.45
@@ -66,6 +86,8 @@ COLOR_VALUE = "191F28"
 COLOR_MUTED = "6B7684"
 COLOR_UP = "16A34A"
 COLOR_DOWN = "DC2626"
+
+FULL_REGION = Region(MARGIN_X, CONTENT_W)
 
 
 def layout(markdown: str) -> Deck:
@@ -108,7 +130,7 @@ def _emit_section(deck: Deck, title: str | None, body: list[Block]) -> None:
         if cursor + h > CONTENT_BOTTOM and cursor > CONTENT_TOP:
             slide = _new_slide(deck, _continued(title))
             cursor = CONTENT_TOP
-        _place(slide, block, cursor)
+        _place(slide, block, cursor, FULL_REGION)
         cursor += h
 
 
@@ -157,17 +179,33 @@ def _block_height(block: Block) -> float:
         return CHART_H + BLOCK_GAP
     if isinstance(block, Kpi):
         return KPI_H + BLOCK_GAP
+    if isinstance(block, Columns):
+        # 가장 높은 칸이 이 블록의 높이가 된다.
+        return max((_column_height(col) for col in block.columns), default=0.0)
     return 0.0
 
 
-def _place(slide: Slide, block: Block, y: float) -> None:
+def _column_height(blocks: list[Block]) -> float:
+    return sum(_block_height(b) for b in blocks)
+
+
+def _flow(slide: Slide, blocks: list[Block], region: Region, start_y: float) -> float:
+    # 한 영역 안에서 블록을 위에서 아래로 놓는다. 페이지 넘김은 없다(컬럼 안쪽용).
+    cursor = start_y
+    for block in blocks:
+        _place(slide, block, cursor, region)
+        cursor += _block_height(block)
+    return cursor
+
+
+def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
     if isinstance(block, Heading):
         # 본문 소제목(H2 이하). 슬라이드를 여는 H1 은 _sections 에서 걸러졌다.
         slide.elements.append(
             TextElement(
-                x=_r(MARGIN_X),
+                x=_r(region.x),
                 y=_r(y + SUBHEAD_TOP_GAP),
-                w=_r(CONTENT_W),
+                w=_r(region.w),
                 h=_r(SUBHEAD_H),
                 z=1,
                 text=block.text,
@@ -181,9 +219,9 @@ def _place(slide: Slide, block: Block, y: float) -> None:
         indent = BULLET_INDENT * (block.level + 1)
         slide.elements.append(
             TextElement(
-                x=_r(MARGIN_X + indent),
+                x=_r(region.x + indent),
                 y=_r(y),
-                w=_r(CONTENT_W - indent),
+                w=_r(region.w - indent),
                 h=_r(BULLET_LINE_H),
                 z=1,
                 text=block.text,
@@ -196,9 +234,9 @@ def _place(slide: Slide, block: Block, y: float) -> None:
     elif isinstance(block, Paragraph):
         slide.elements.append(
             TextElement(
-                x=_r(MARGIN_X),
+                x=_r(region.x),
                 y=_r(y),
-                w=_r(CONTENT_W),
+                w=_r(region.w),
                 h=_r(PARA_LINE_H),
                 z=1,
                 text=block.text,
@@ -210,9 +248,9 @@ def _place(slide: Slide, block: Block, y: float) -> None:
     elif isinstance(block, Image):
         slide.elements.append(
             ImageElement(
-                x=_r(MARGIN_X),
+                x=_r(region.x),
                 y=_r(y),
-                w=_r(CONTENT_W),
+                w=_r(region.w),
                 h=_r(IMAGE_H),
                 z=1,
                 src=block.src,
@@ -224,26 +262,38 @@ def _place(slide: Slide, block: Block, y: float) -> None:
 
         slide.elements.append(
             ChartElement(
-                x=_r(MARGIN_X),
+                x=_r(region.x),
                 y=_r(y),
-                w=_r(CONTENT_W),
+                w=_r(region.w),
                 h=_r(CHART_H),
                 z=1,
                 spec=block.spec,
             )
         )
     elif isinstance(block, Kpi):
-        _place_kpi(slide, block, y)
+        _place_kpi(slide, block, y, region)
+    elif isinstance(block, Columns):
+        _place_columns(slide, block, y, region)
 
 
-def _place_kpi(slide: Slide, block: Kpi, y: float) -> None:
+def _place_columns(slide: Slide, block: Columns, y: float, region: Region) -> None:
+    n = len(block.columns)
+    if n == 0:
+        return
+    col_w = (region.w - (n - 1) * COL_GAP) / n
+    for i, col in enumerate(block.columns):
+        col_x = region.x + i * (col_w + COL_GAP)
+        _flow(slide, col, Region(col_x, col_w), y)
+
+
+def _place_kpi(slide: Slide, block: Kpi, y: float, region: Region) -> None:
     n = len(block.tiles)
     if n == 0:
         return
-    tile_w = (CONTENT_W - (n - 1) * KPI_GAP) / n
+    tile_w = (region.w - (n - 1) * KPI_GAP) / n
     inner_w = tile_w - 2 * KPI_PAD
     for i, tile in enumerate(block.tiles):
-        tile_x = MARGIN_X + i * (tile_w + KPI_GAP)
+        tile_x = region.x + i * (tile_w + KPI_GAP)
         # 카드 배경
         slide.elements.append(
             ShapeElement(
