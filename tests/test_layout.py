@@ -59,6 +59,19 @@ def test_2단_컬럼은_왼쪽_오른쪽에_나란히_배치된다():
     assert left[0].y == right[0].y
 
 
+def test_표는_헤더와_각_셀을_그린다():
+    md = "# 표\n\n| 지역 | 매출 |\n|---|---|\n| 서울 | 42 |\n| 부산 | 18 |\n"
+    els = layout(md).slides[0].elements
+
+    texts = [e.text for e in els if e.type == "text"]
+    for want in ["지역", "매출", "서울", "42", "부산", "18"]:
+        assert want in texts
+    # 헤더 셀은 볼드로 그린다.
+    assert any(e.type == "text" and e.text == "지역" and e.bold for e in els)
+    # 헤더 배경 사각형이 있다.
+    assert any(e.type == "shape" and e.fill == "EEF2F7" for e in els)
+
+
 def test_같은_마크다운은_같은_좌표를_낸다():
     # 결정성 = "보이는 대로 나온다"의 뿌리. DOM 미리보기와 pptx 가 같은 IR 을
     # 받으려면 같은 입력이 항상 같은 좌표여야 한다.

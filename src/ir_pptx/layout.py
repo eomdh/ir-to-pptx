@@ -25,6 +25,7 @@ from ir_pptx.blocks import (
     Image,
     Kpi,
     Paragraph,
+    Table,
     parse_markdown,
 )
 from ir_pptx.ir import (
@@ -78,6 +79,10 @@ KPI_H = 1.15
 KPI_GAP = 0.22
 KPI_PAD = 0.22
 
+# 표
+TABLE_ROW_H = 0.42
+TABLE_PAD = 0.14
+
 COLOR_TITLE = "12213A"
 COLOR_TEXT = "1A1A1A"
 COLOR_ACCENT = "2563EB"
@@ -86,6 +91,8 @@ COLOR_VALUE = "191F28"
 COLOR_MUTED = "6B7684"
 COLOR_UP = "16A34A"
 COLOR_DOWN = "DC2626"
+COLOR_TABLE_HEAD = "EEF2F7"
+COLOR_BORDER = "E5E7EB"
 
 FULL_REGION = Region(MARGIN_X, CONTENT_W)
 
@@ -179,6 +186,8 @@ def _block_height(block: Block) -> float:
         return CHART_H + BLOCK_GAP
     if isinstance(block, Kpi):
         return KPI_H + BLOCK_GAP
+    if isinstance(block, Table):
+        return (len(block.rows) + 1) * TABLE_ROW_H + BLOCK_GAP
     if isinstance(block, Columns):
         # 가장 높은 칸이 이 블록의 높이가 된다.
         return max((_column_height(col) for col in block.columns), default=0.0)
@@ -272,6 +281,8 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
         )
     elif isinstance(block, Kpi):
         _place_kpi(slide, block, y, region)
+    elif isinstance(block, Table):
+        _place_table(slide, block, y, region)
     elif isinstance(block, Columns):
         _place_columns(slide, block, y, region)
 
@@ -284,6 +295,60 @@ def _place_columns(slide: Slide, block: Columns, y: float, region: Region) -> No
     for i, col in enumerate(block.columns):
         col_x = region.x + i * (col_w + COL_GAP)
         _flow(slide, col, Region(col_x, col_w), y)
+
+
+def _place_table(slide: Slide, block: Table, y: float, region: Region) -> None:
+    ncols = len(block.header) or max((len(r) for r in block.rows), default=0)
+    if ncols == 0:
+        return
+    col_w = region.w / ncols
+
+    def put_row(cells: list[str], row_y: float, *, bold: bool, color: str) -> None:
+        for c in range(ncols):
+            slide.elements.append(
+                TextElement(
+                    x=_r(region.x + c * col_w + TABLE_PAD),
+                    y=_r(row_y + 0.06),
+                    w=_r(col_w - 2 * TABLE_PAD),
+                    h=_r(TABLE_ROW_H - 0.1),
+                    z=1,
+                    text=cells[c] if c < len(cells) else "",
+                    size=13,
+                    bold=bold,
+                    color=color,
+                    align="left",
+                )
+            )
+
+    # 헤더 배경 + 텍스트
+    slide.elements.append(
+        ShapeElement(
+            x=_r(region.x),
+            y=_r(y),
+            w=_r(region.w),
+            h=_r(TABLE_ROW_H),
+            z=0,
+            shape="rect",
+            fill=COLOR_TABLE_HEAD,
+        )
+    )
+    put_row(block.header, y, bold=True, color=COLOR_TITLE)
+
+    # 본문 행 + 행 아래 얇은 구분선
+    for r, cells in enumerate(block.rows):
+        row_y = y + (r + 1) * TABLE_ROW_H
+        put_row(cells, row_y, bold=False, color=COLOR_TEXT)
+        slide.elements.append(
+            ShapeElement(
+                x=_r(region.x),
+                y=_r(row_y + TABLE_ROW_H),
+                w=_r(region.w),
+                h=0.008,
+                z=0,
+                shape="rect",
+                fill=COLOR_BORDER,
+            )
+        )
 
 
 def _place_kpi(slide: Slide, block: Kpi, y: float, region: Region) -> None:

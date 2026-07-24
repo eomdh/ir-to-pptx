@@ -57,13 +57,20 @@ class Kpi:
 
 
 @dataclass
+class Table:
+    header: list[str]
+    rows: list[list[str]]
+
+
+@dataclass
 class Columns:
     columns: list[list[Block]]
 
 
-Block = Heading | Bullet | Paragraph | Image | Chart | Kpi | Columns
+Block = Heading | Bullet | Paragraph | Image | Chart | Kpi | Table | Columns
 
-_md = MarkdownIt("commonmark")
+# commonmark 프리셋은 표를 끄므로 명시적으로 켠다.
+_md = MarkdownIt("commonmark").enable("table")
 
 
 def parse_markdown(text: str) -> list[Block]:
@@ -114,6 +121,12 @@ def _parse_plain(text: str) -> list[Block]:
     heading_level = 1
     mode: str | None = None  # 바로 뒤 inline 토큰을 무엇으로 읽을지
 
+    # 표 상태
+    section = "body"
+    header: list[str] = []
+    rows: list[list[str]] = []
+    row: list[str] = []
+
     for tok in tokens:
         t = tok.type
         if t in ("bullet_list_open", "ordered_list_open"):
@@ -132,8 +145,28 @@ def _parse_plain(text: str) -> list[Block]:
                 blocks.append(Chart(spec=_parse_chart(tok.content)))
             elif info == "kpi":
                 blocks.append(_parse_kpi(tok.content))
+        elif t == "table_open":
+            section, header, rows = "body", [], []
+        elif t == "thead_open":
+            section = "head"
+        elif t == "tbody_open":
+            section = "body"
+        elif t == "tr_open":
+            row = []
+        elif t in ("th_open", "td_open"):
+            mode = "cell"
+        elif t == "tr_close":
+            if section == "head":
+                header = row
+            else:
+                rows.append(row)
+        elif t == "table_close":
+            blocks.append(Table(header=header, rows=rows))
         elif t == "inline":
-            _emit_inline(blocks, tok, mode, list_depth, heading_level)
+            if mode == "cell":
+                row.append(_inline_text(tok))
+            else:
+                _emit_inline(blocks, tok, mode, list_depth, heading_level)
             mode = None
 
     return blocks
