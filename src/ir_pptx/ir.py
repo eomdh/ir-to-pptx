@@ -19,7 +19,7 @@ DOM 쪽에서만 앞에 '#' 를 붙인다.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -103,7 +103,7 @@ class ChartElement(BaseModel):
 # 빠짐없는(exhaustive) 디스패치가 되고, pydantic 은 역직렬화 때 이 필드로
 # 정확한 모델을 고른다.
 Element = Annotated[
-    Union[TextElement, ShapeElement, ImageElement, ChartElement],
+    TextElement | ShapeElement | ImageElement | ChartElement,
     Field(discriminator="type"),
 ]
 
