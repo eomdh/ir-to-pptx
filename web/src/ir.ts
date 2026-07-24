@@ -28,7 +28,7 @@ export interface ShapeElement {
   w: number;
   h: number;
   z: number;
-  shape: "rect" | "line";
+  shape: "rect" | "roundRect" | "line";
   fill: string;
 }
 

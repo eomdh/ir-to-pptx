@@ -44,7 +44,7 @@ class TextElement(BaseModel):
 
 
 class ShapeElement(BaseModel):
-    """단색 도형. 제목 밑 강조 바 같은 장식에 쓴다."""
+    """단색 도형. 제목 밑 강조 바, KPI 타일·표 헤더 배경 같은 장식에 쓴다."""
 
     type: Literal["shape"] = "shape"
     x: float
@@ -52,7 +52,7 @@ class ShapeElement(BaseModel):
     w: float
     h: float
     z: int = 0
-    shape: Literal["rect", "line"] = "rect"
+    shape: Literal["rect", "roundRect", "line"] = "rect"
     fill: str = "2563EB"
 
 

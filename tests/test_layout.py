@@ -65,6 +65,24 @@ def test_본문_소제목_h2가_사라지지_않고_텍스트로_들어간다():
     assert title_y < sub[0].y < bullet_y
 
 
+def test_kpi_펜스는_타일마다_카드와_값_라벨을_만든다():
+    md = (
+        "# 지표\n\n"
+        "```kpi\n"
+        '[{"label":"매출","value":"63억","delta":"+18%"},{"label":"이탈률","value":"5.1%"}]\n'
+        "```\n"
+    )
+    els = layout(md).slides[0].elements
+
+    cards = [e for e in els if e.type == "shape" and e.shape == "roundRect"]
+    assert len(cards) == 2
+    texts = [e.text for e in els if e.type == "text"]
+    assert "63억" in texts and "매출" in texts and "+18%" in texts
+    # 두 타일은 같은 높이에서 가로로 나란히 놓인다.
+    assert cards[0].y == cards[1].y
+    assert cards[0].x < cards[1].x
+
+
 def test_차트_펜스는_위치잡힌_차트요소가_된다():
     md = (
         "# 차트\n\n"

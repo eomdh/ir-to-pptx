@@ -31,6 +31,7 @@ export interface ImageOpts extends Box {
 
 export interface ShapeOpts extends Box {
   fill: { color: string };
+  rectRadius?: number;
 }
 
 // pptxgen.Slide 중 우리가 쓰는 부분만. 테스트는 이걸 가짜로 구현한다.
@@ -57,7 +58,12 @@ export function placeElement(slide: SlideSink, el: Element, resolveChart: Resolv
       });
       break;
     case "shape":
-      slide.addShape(el.shape, { ...box, fill: { color: el.fill } });
+      slide.addShape(el.shape, {
+        ...box,
+        fill: { color: el.fill },
+        // 둥근 모서리 카드는 반지름을 함께 넘긴다.
+        ...(el.shape === "roundRect" ? { rectRadius: 0.06 } : {}),
+      });
       break;
     case "image":
       // data URI 는 data, 외부 URL 은 path 로 넣는다(pptxgenjs 규약).

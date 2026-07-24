@@ -44,7 +44,19 @@ class Chart:
     spec: ChartSpec
 
 
-Block = Heading | Bullet | Paragraph | Image | Chart
+@dataclass
+class KpiTile:
+    label: str
+    value: str
+    delta: str | None = None
+
+
+@dataclass
+class Kpi:
+    tiles: list[KpiTile]
+
+
+Block = Heading | Bullet | Paragraph | Image | Chart | Kpi
 
 _md = MarkdownIt("commonmark")
 
@@ -69,8 +81,12 @@ def parse_markdown(text: str) -> list[Block]:
         elif t == "paragraph_open":
             # 리스트 안의 문단은 불릿 한 줄이다.
             mode = "bullet" if list_depth > 0 else "para"
-        elif t == "fence" and tok.info.strip() == "chart":
-            blocks.append(Chart(spec=_parse_chart(tok.content)))
+        elif t == "fence":
+            info = tok.info.strip()
+            if info == "chart":
+                blocks.append(Chart(spec=_parse_chart(tok.content)))
+            elif info == "kpi":
+                blocks.append(_parse_kpi(tok.content))
         elif t == "inline":
             _emit_inline(blocks, tok, mode, list_depth, heading_level)
             mode = None
@@ -113,3 +129,16 @@ def _first_image(tok) -> tuple[str, str] | None:
 def _parse_chart(raw: str) -> ChartSpec:
     # 잘못된 차트 JSON 은 pydantic 이 걸러 명확한 에러로 올린다(API 는 400 으로 변환).
     return ChartSpec.model_validate(json.loads(raw))
+
+
+def _parse_kpi(raw: str) -> Kpi:
+    data = json.loads(raw)
+    tiles = [
+        KpiTile(
+            label=str(item.get("label", "")),
+            value=str(item.get("value", "")),
+            delta=str(item["delta"]) if item.get("delta") is not None else None,
+        )
+        for item in data
+    ]
+    return Kpi(tiles=tiles)

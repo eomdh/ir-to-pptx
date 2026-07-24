@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from ir_pptx.blocks import Block, Bullet, Chart, Heading, Image, Paragraph, parse_markdown
+from ir_pptx.blocks import Block, Bullet, Chart, Heading, Image, Kpi, Paragraph, parse_markdown
 from ir_pptx.ir import (
     Deck,
     ImageElement,
@@ -53,9 +53,19 @@ BLOCK_GAP = 0.18  # 이미지·차트 아래 여백
 IMAGE_H = 3.0
 CHART_H = 3.2
 
+# KPI 지표 타일
+KPI_H = 1.15
+KPI_GAP = 0.22
+KPI_PAD = 0.22
+
 COLOR_TITLE = "12213A"
 COLOR_TEXT = "1A1A1A"
 COLOR_ACCENT = "2563EB"
+COLOR_CARD = "F2F4F6"
+COLOR_VALUE = "191F28"
+COLOR_MUTED = "6B7684"
+COLOR_UP = "16A34A"
+COLOR_DOWN = "DC2626"
 
 
 def layout(markdown: str) -> Deck:
@@ -145,6 +155,8 @@ def _block_height(block: Block) -> float:
         return IMAGE_H + BLOCK_GAP
     if isinstance(block, Chart):
         return CHART_H + BLOCK_GAP
+    if isinstance(block, Kpi):
+        return KPI_H + BLOCK_GAP
     return 0.0
 
 
@@ -220,6 +232,83 @@ def _place(slide: Slide, block: Block, y: float) -> None:
                 spec=block.spec,
             )
         )
+    elif isinstance(block, Kpi):
+        _place_kpi(slide, block, y)
+
+
+def _place_kpi(slide: Slide, block: Kpi, y: float) -> None:
+    n = len(block.tiles)
+    if n == 0:
+        return
+    tile_w = (CONTENT_W - (n - 1) * KPI_GAP) / n
+    inner_w = tile_w - 2 * KPI_PAD
+    for i, tile in enumerate(block.tiles):
+        tile_x = MARGIN_X + i * (tile_w + KPI_GAP)
+        # 카드 배경
+        slide.elements.append(
+            ShapeElement(
+                x=_r(tile_x),
+                y=_r(y),
+                w=_r(tile_w),
+                h=_r(KPI_H),
+                z=0,
+                shape="roundRect",
+                fill=COLOR_CARD,
+            )
+        )
+        # 큰 값
+        slide.elements.append(
+            TextElement(
+                x=_r(tile_x + KPI_PAD),
+                y=_r(y + 0.22),
+                w=_r(inner_w),
+                h=_r(0.5),
+                z=1,
+                text=tile.value,
+                size=24,
+                bold=True,
+                color=COLOR_VALUE,
+                align="left",
+            )
+        )
+        # 라벨(왼쪽)
+        slide.elements.append(
+            TextElement(
+                x=_r(tile_x + KPI_PAD),
+                y=_r(y + 0.74),
+                w=_r(inner_w),
+                h=_r(0.28),
+                z=1,
+                text=tile.label,
+                size=12,
+                color=COLOR_MUTED,
+                align="left",
+            )
+        )
+        # delta(오른쪽, 부호로 색을 고른다)
+        if tile.delta:
+            slide.elements.append(
+                TextElement(
+                    x=_r(tile_x + KPI_PAD),
+                    y=_r(y + 0.74),
+                    w=_r(inner_w),
+                    h=_r(0.28),
+                    z=1,
+                    text=tile.delta,
+                    size=12,
+                    bold=True,
+                    color=_delta_color(tile.delta),
+                    align="right",
+                )
+            )
+
+
+def _delta_color(delta: str) -> str:
+    if delta.startswith("+"):
+        return COLOR_UP
+    if delta.startswith("-"):
+        return COLOR_DOWN
+    return COLOR_MUTED
 
 
 def _continued(title: str | None) -> str | None:

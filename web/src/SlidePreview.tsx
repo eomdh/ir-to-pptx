@@ -50,7 +50,15 @@ function ElementView({ el }: { el: Element }) {
         </div>
       );
     case "shape":
-      return <div style={{ ...box(el), background: `#${el.fill}` }} />;
+      return (
+        <div
+          style={{
+            ...box(el),
+            background: `#${el.fill}`,
+            borderRadius: el.shape === "roundRect" ? 6 : 0,
+          }}
+        />
+      );
     case "image":
       return <img src={el.src} alt="" style={{ ...box(el), objectFit: "contain" }} />;
     case "chart":
