@@ -1,0 +1,7 @@
+services:
+  app:
+    build: .
+    ports:
+      - "8000:8000"
+    # DB 도 외부 API 도 없다. 마크다운 → 좌표 계산은 순수 함수라
+    # 클론해서 `docker compose up` 하나면 바로 돈다.

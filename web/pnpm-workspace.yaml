@@ -1,0 +1,5 @@
+# pnpm 11에서는 package.json의 pnpm.onlyBuiltDependencies가 동작하지 않는다.
+# 빌드 스크립트를 허용할 패키지는 여기에 적는다. 리스트가 아니라 맵이다.
+allowBuilds:
+  esbuild: true
+  "@biomejs/biome": true

@@ -1,0 +1,44 @@
+[project]
+name = "ir-to-pptx"
+version = "0.1.0"
+description = "마크다운을 좌표까지 계산된 평면 IR(JSON)로 내려주는 FastAPI 백엔드 — 파일은 브라우저가 만든다."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Deokhyeon Eom", email = "edh9692@gmail.com" }]
+keywords = ["pptx", "presentation", "layout-engine", "fastapi", "intermediate-representation"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Office/Business :: Office Suites",
+]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    # 마크다운 렉싱은 검증된 토큰 스트림에 맡기고, 우리는 레이아웃(좌표 계산)만 짠다.
+    "markdown-it-py>=3.0",
+]
+
+[dependency-groups]
+# httpx 는 FastAPI TestClient 가 안에서 쓴다.
+dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.28"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ir_pptx"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+# 기본값(E4/E7/E9/F)만 두면 CI 에 Ruff 스텝이 보여도 실제로 거르는 게 거의 없다.
+# import 정렬(I), 흔한 버그 패턴(B), 낡은 문법(UP), 안 쓰는 인자(ARG), 단순화(SIM)까지 본다.
+select = ["E", "F", "I", "B", "UP", "ARG", "SIM"]
