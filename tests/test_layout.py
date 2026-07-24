@@ -52,6 +52,19 @@ def test_같은_마크다운은_같은_좌표를_낸다():
     assert layout(md).model_dump() == layout(md).model_dump()
 
 
+def test_본문_소제목_h2가_사라지지_않고_텍스트로_들어간다():
+    # 예전엔 H2 블록이 레이아웃에서 조용히 사라졌다. 이제는 소제목으로 그린다.
+    deck = layout("# 슬라이드\n\n## 소제목\n\n- 항목\n")
+    texts = _texts(deck.slides[0])
+    sub = [t for t in texts if t.text == "소제목"]
+    assert len(sub) == 1
+    assert sub[0].bold and not sub[0].bullet
+    # 소제목은 제목(H1)보다 아래, 불릿보다 위에 온다.
+    title_y = next(t.y for t in texts if t.text == "슬라이드")
+    bullet_y = next(t.y for t in texts if t.bullet)
+    assert title_y < sub[0].y < bullet_y
+
+
 def test_차트_펜스는_위치잡힌_차트요소가_된다():
     md = (
         "# 차트\n\n"

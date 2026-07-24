@@ -41,6 +41,9 @@ ACCENT_H = 0.06
 # 본문 영역
 CONTENT_TOP = 1.55
 CONTENT_BOTTOM = SLIDE_H - 0.4  # 5.225
+SUBHEAD_SIZE = 18
+SUBHEAD_H = 0.42
+SUBHEAD_TOP_GAP = 0.12
 BULLET_INDENT = 0.35
 BULLET_SIZE = 16
 BULLET_LINE_H = 0.42
@@ -132,6 +135,8 @@ def _new_slide(deck: Deck, title: str | None) -> Slide:
 
 
 def _block_height(block: Block) -> float:
+    if isinstance(block, Heading):
+        return SUBHEAD_TOP_GAP + SUBHEAD_H
     if isinstance(block, Bullet):
         return BULLET_LINE_H
     if isinstance(block, Paragraph):
@@ -144,7 +149,23 @@ def _block_height(block: Block) -> float:
 
 
 def _place(slide: Slide, block: Block, y: float) -> None:
-    if isinstance(block, Bullet):
+    if isinstance(block, Heading):
+        # 본문 소제목(H2 이하). 슬라이드를 여는 H1 은 _sections 에서 걸러졌다.
+        slide.elements.append(
+            TextElement(
+                x=_r(MARGIN_X),
+                y=_r(y + SUBHEAD_TOP_GAP),
+                w=_r(CONTENT_W),
+                h=_r(SUBHEAD_H),
+                z=1,
+                text=block.text,
+                size=SUBHEAD_SIZE,
+                bold=True,
+                color=COLOR_TITLE,
+                align="left",
+            )
+        )
+    elif isinstance(block, Bullet):
         indent = BULLET_INDENT * (block.level + 1)
         slide.elements.append(
             TextElement(
