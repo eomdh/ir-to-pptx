@@ -21,6 +21,7 @@ export interface TextOpts extends Box {
   bold: boolean;
   color: string;
   align: Align;
+  valign: "top";
   bullet: boolean;
 }
 
@@ -54,6 +55,9 @@ export function placeElement(slide: SlideSink, el: Element, resolveChart: Resolv
         bold: el.bold,
         color: el.color,
         align: el.align,
+        // 위에서부터 흐르게 고정. 여러 줄로 접힌 상자에서 pptx 기본(가운데)이면
+        // 첫 줄이 예산 잡은 자리보다 아래로 밀려 DOM 미리보기와 어긋남.
+        valign: "top",
         bullet: el.bullet,
       });
       break;

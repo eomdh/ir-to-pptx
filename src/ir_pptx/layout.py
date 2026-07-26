@@ -3,13 +3,13 @@
 이 파일이 이 repo 의 코어다. 하는 일은 딱 하나: 블록 목록을 받아 슬라이드마다
 요소를 절대좌표(인치)로 놓고, 세로로 넘치면 다음 슬라이드로 이어붙인다.
 
-결정적이다 — 같은 마크다운은 항상 같은 IR 을 낸다(랜덤·시간·해시순서 의존 없음).
+결정적이다 — 같은 마크다운은 항상 같은 IR 을 낸다(랜덤, 시간, 해시순서 의존 없음).
 그게 "화면 미리보기와 pptx 파일이 같다"의 근거다.
 
-의도적 한계: 텍스트 줄바꿈(wrap) 을 측정하지 않는다. 불릿·문단은 한 줄 높이를
-예산으로 잡는다. 폰트 메트릭 엔진을 두는 건 이 데모의 목적(한 가지 어려운 걸
-증명) 대비 과하다. 아주 긴 한 줄이 박스 안에서 시각적으로 접히면 세로가 약간
-촘촘해질 수 있고, 그건 README 한계에 적는다.
+불릿과 문단은 줄바꿈을 어림해 세로 높이를 잡음. 폭에 안 맞는 긴 텍스트는
+`metrics.line_count` 로 몇 줄로 접힐지 세어 그만큼 박스를 늘림. 폰트 파일을
+읽는 대신 글자 폭을 em 비율로 어림하는 방식이라, 정확한 픽셀이 아니라 다음
+블록과 안 겹칠 만큼 넉넉한 자리를 잡는 게 목표(자세한 이유는 `metrics.py`).
 """
 
 from __future__ import annotations
@@ -35,6 +35,7 @@ from ir_pptx.ir import (
     Slide,
     TextElement,
 )
+from ir_pptx.metrics import line_count
 
 # 슬라이드(16:9). pptxgenjs 기본 레이아웃과 같은 값.
 SLIDE_W = 10.0
@@ -132,7 +133,7 @@ def _emit_section(deck: Deck, title: str | None, body: list[Block]) -> None:
     slide = _new_slide(deck, title)
     cursor = CONTENT_TOP
     for block in body:
-        h = _block_height(block)
+        h = _block_height(block, FULL_REGION.w)
         # 현재 슬라이드에 이미 뭔가 놓였는데 다음 블록이 안 맞으면 이어지는 슬라이드로.
         if cursor + h > CONTENT_BOTTOM and cursor > CONTENT_TOP:
             slide = _new_slide(deck, _continued(title))
@@ -173,13 +174,28 @@ def _new_slide(deck: Deck, title: str | None) -> Slide:
     return slide
 
 
-def _block_height(block: Block) -> float:
+def _bullet_indent(level: int) -> float:
+    return BULLET_INDENT * (level + 1)
+
+
+def _bullet_lines(block: Bullet, width: float) -> int:
+    # 불릿은 들여쓰기만큼 글줄 폭이 좁아짐.
+    return line_count(block.text, width - _bullet_indent(block.level), BULLET_SIZE)
+
+
+def _para_lines(block: Paragraph, width: float) -> int:
+    return line_count(block.text, width, PARA_SIZE)
+
+
+def _block_height(block: Block, width: float) -> float:
+    # width = 이 블록이 놓일 가로 폭(인치). 불릿과 문단은 이 폭에서 몇 줄로 접히는지에
+    # 따라 세로가 늘어나므로, 높이를 알려면 폭이 필요.
     if isinstance(block, Heading):
         return SUBHEAD_TOP_GAP + SUBHEAD_H
     if isinstance(block, Bullet):
-        return BULLET_LINE_H
+        return _bullet_lines(block, width) * BULLET_LINE_H
     if isinstance(block, Paragraph):
-        return PARA_LINE_H
+        return _para_lines(block, width) * PARA_LINE_H
     if isinstance(block, Image):
         return IMAGE_H + BLOCK_GAP
     if isinstance(block, Chart):
@@ -189,13 +205,21 @@ def _block_height(block: Block) -> float:
     if isinstance(block, Table):
         return (len(block.rows) + 1) * TABLE_ROW_H + BLOCK_GAP
     if isinstance(block, Columns):
-        # 가장 높은 칸이 이 블록의 높이가 된다.
-        return max((_column_height(col) for col in block.columns), default=0.0)
+        # 가장 높은 칸이 이 블록의 높이. 칸이 좁아지면 그 안 텍스트가 더 접히므로,
+        # 칸 폭을 구해 그 폭으로 각 칸 높이를 구함.
+        col_w = _column_width(width, len(block.columns))
+        return max((_column_height(col, col_w) for col in block.columns), default=0.0)
     return 0.0
 
 
-def _column_height(blocks: list[Block]) -> float:
-    return sum(_block_height(b) for b in blocks)
+def _column_width(width: float, n: int) -> float:
+    if n == 0:
+        return 0.0
+    return (width - (n - 1) * COL_GAP) / n
+
+
+def _column_height(blocks: list[Block], width: float) -> float:
+    return sum(_block_height(b, width) for b in blocks)
 
 
 def _flow(slide: Slide, blocks: list[Block], region: Region, start_y: float) -> float:
@@ -203,7 +227,7 @@ def _flow(slide: Slide, blocks: list[Block], region: Region, start_y: float) -> 
     cursor = start_y
     for block in blocks:
         _place(slide, block, cursor, region)
-        cursor += _block_height(block)
+        cursor += _block_height(block, region.w)
     return cursor
 
 
@@ -225,13 +249,15 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
             )
         )
     elif isinstance(block, Bullet):
-        indent = BULLET_INDENT * (block.level + 1)
+        indent = _bullet_indent(block.level)
         slide.elements.append(
             TextElement(
                 x=_r(region.x + indent),
                 y=_r(y),
                 w=_r(region.w - indent),
-                h=_r(BULLET_LINE_H),
+                # 접히는 줄 수만큼 상자를 늘림. 높이 예산(_block_height)과 같은 값이라
+                # 다음 블록이 이 상자 바로 아래에서 시작.
+                h=_r(_bullet_lines(block, region.w) * BULLET_LINE_H),
                 z=1,
                 text=block.text,
                 size=BULLET_SIZE,
@@ -246,7 +272,7 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 x=_r(region.x),
                 y=_r(y),
                 w=_r(region.w),
-                h=_r(PARA_LINE_H),
+                h=_r(_para_lines(block, region.w) * PARA_LINE_H),
                 z=1,
                 text=block.text,
                 size=PARA_SIZE,
@@ -291,7 +317,7 @@ def _place_columns(slide: Slide, block: Columns, y: float, region: Region) -> No
     n = len(block.columns)
     if n == 0:
         return
-    col_w = (region.w - (n - 1) * COL_GAP) / n
+    col_w = _column_width(region.w, n)
     for i, col in enumerate(block.columns):
         col_x = region.x + i * (col_w + COL_GAP)
         _flow(slide, col, Region(col_x, col_w), y)

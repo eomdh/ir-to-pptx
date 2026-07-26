@@ -4,7 +4,8 @@
 전부 실패한다(TDD red). 구현이 이 스펙을 초록으로 만들면 계약이 성립한다.
 """
 
-from ir_pptx.layout import layout
+from ir_pptx.layout import CONTENT_W, PARA_LINE_H, PARA_SIZE, layout
+from ir_pptx.metrics import line_count
 
 
 def _texts(slide):
@@ -108,6 +109,27 @@ def test_kpi_펜스는_타일마다_카드와_값_라벨을_만든다():
     # 두 타일은 같은 높이에서 가로로 나란히 놓인다.
     assert cards[0].y == cards[1].y
     assert cards[0].x < cards[1].x
+
+
+def test_긴_문단은_접히는_줄_수만큼_세로를_차지한다():
+    # 예전엔 문단이 늘 한 줄 높이였다. 이제는 폭에 맞춰 접히는 줄 수만큼 상자가 큰다.
+    long = "가" * 120
+    para = next(t for t in _texts(layout(f"# 긴 문단\n\n{long}\n").slides[0]) if t.text == long)
+
+    n = line_count(long, CONTENT_W, PARA_SIZE)
+    assert n >= 3
+    assert para.h == round(n * PARA_LINE_H, 3)
+
+
+def test_긴_불릿은_다음_블록을_그만큼_아래로_민다():
+    # 줄바꿈을 세지 않던 시절엔 긴 불릿 아래 블록이 그 위로 겹쳐 올라왔다.
+    def second_bullet_y(md):
+        bullets = [t for t in _texts(layout(md).slides[0]) if t.bullet]
+        return bullets[1].y
+
+    short = second_bullet_y("# 목록\n\n- 짧은 항목\n- 다음 항목\n")
+    long = second_bullet_y("# 목록\n\n- " + "가" * 120 + "\n- 다음 항목\n")
+    assert long > short
 
 
 def test_차트_펜스는_위치잡힌_차트요소가_된다():
