@@ -6,6 +6,13 @@
 
 export type Align = "left" | "center" | "right";
 
+// 글상자 안 한 조각. runs 가 있을 때 인라인 강조(굵게/기울임)를 조각별로 그린다.
+export interface TextRun {
+  text: string;
+  bold: boolean;
+  italic: boolean;
+}
+
 export interface TextElement {
   type: "text";
   x: number;
@@ -14,8 +21,10 @@ export interface TextElement {
   h: number;
   z: number;
   text: string;
+  runs: TextRun[] | null;
   size: number; // pt
   bold: boolean;
+  italic: boolean;
   color: string;
   align: Align;
   bullet: boolean;

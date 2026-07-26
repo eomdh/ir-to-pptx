@@ -26,8 +26,20 @@ from pydantic import BaseModel, Field
 Align = Literal["left", "center", "right"]
 
 
+class TextRun(BaseModel):
+    """글상자 안 한 조각. 인라인 강조(굵게/기울임)가 섞인 줄을 조각들로 나눠 담는 단위."""
+
+    text: str
+    bold: bool = False
+    italic: bool = False
+
+
 class TextElement(BaseModel):
-    """글상자 하나. 불릿 한 줄도 이 요소 하나로 표현한다(줄마다 y 가 다르다)."""
+    """글상자 하나. 불릿 한 줄도 이 요소 하나로 표현한다(줄마다 y 가 다르다).
+
+    `runs` 가 있으면 조각별 강조로 그리고, 없으면 `text` 를 요소 단위 bold/italic 으로 그림.
+    `runs` 가 있을 때도 `text` 는 조각을 이어붙인 평문이라 줄 수 계산과 폴백에 쓰임.
+    """
 
     type: Literal["text"] = "text"
     x: float
@@ -36,8 +48,10 @@ class TextElement(BaseModel):
     h: float
     z: int = 0
     text: str
+    runs: list[TextRun] | None = None
     size: float  # pt
     bold: bool = False
+    italic: bool = False
     color: str = "1A1A1A"
     align: Align = "left"
     bullet: bool = False

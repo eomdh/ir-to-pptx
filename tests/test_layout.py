@@ -132,6 +132,27 @@ def test_긴_불릿은_다음_블록을_그만큼_아래로_민다():
     assert long > short
 
 
+def test_인라인_강조는_조각_runs로_나뉜다():
+    # **굵게** 와 *기울임* 이 조각별 스타일로 갈린다. text 는 조각을 이어붙인 평문.
+    slide = layout("# 강조\n\n- 보통 **굵게** 또 *기울임* 끝\n").slides[0]
+    bullet = next(t for t in _texts(slide) if t.bullet)
+
+    assert bullet.text == "보통 굵게 또 기울임 끝"
+    assert bullet.runs is not None
+    styled = {(r.text, r.bold, r.italic) for r in bullet.runs}
+    assert ("굵게", True, False) in styled
+    assert ("기울임", False, True) in styled
+    # 조각을 이어붙이면 평문과 같다(줄 수 계산의 근거).
+    assert "".join(r.text for r in bullet.runs) == bullet.text
+
+
+def test_강조가_없으면_runs는_비어_평문으로_남는다():
+    # 강조가 없는 흔한 경우엔 runs 를 None 으로 둬 IR 을 작게 유지한다.
+    bullet = next(t for t in _texts(layout("# 평범\n\n- 그냥 한 줄\n").slides[0]) if t.bullet)
+    assert bullet.runs is None
+    assert bullet.text == "그냥 한 줄"
+
+
 def test_차트_펜스는_위치잡힌_차트요소가_된다():
     md = (
         "# 차트\n\n"

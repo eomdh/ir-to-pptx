@@ -34,6 +34,7 @@ from ir_pptx.ir import (
     ShapeElement,
     Slide,
     TextElement,
+    TextRun,
 )
 from ir_pptx.metrics import line_count
 
@@ -178,6 +179,11 @@ def _bullet_indent(level: int) -> float:
     return BULLET_INDENT * (level + 1)
 
 
+def _emphasis_runs(runs: list[TextRun]) -> list[TextRun] | None:
+    # 강조가 하나도 없으면 None 을 줘서 평문 경로로 렌더. IR 을 작게 유지.
+    return runs if any(r.bold or r.italic for r in runs) else None
+
+
 def _bullet_lines(block: Bullet, width: float) -> int:
     # 불릿은 들여쓰기만큼 글줄 폭이 좁아짐.
     return line_count(block.text, width - _bullet_indent(block.level), BULLET_SIZE)
@@ -260,6 +266,7 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 h=_r(_bullet_lines(block, region.w) * BULLET_LINE_H),
                 z=1,
                 text=block.text,
+                runs=_emphasis_runs(block.runs),
                 size=BULLET_SIZE,
                 color=COLOR_TEXT,
                 align="left",
@@ -275,6 +282,7 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 h=_r(_para_lines(block, region.w) * PARA_LINE_H),
                 z=1,
                 text=block.text,
+                runs=_emphasis_runs(block.runs),
                 size=PARA_SIZE,
                 color=COLOR_TEXT,
                 align="left",

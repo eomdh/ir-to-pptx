@@ -19,10 +19,17 @@ interface Box {
 export interface TextOpts extends Box {
   fontSize: number;
   bold: boolean;
+  italic: boolean;
   color: string;
   align: Align;
   valign: "top";
   bullet: boolean;
+}
+
+// pptxgen 의 리치 텍스트 조각. addText 에 문자열 대신 이 배열을 주면 조각별 강조가 된다.
+export interface TextChunk {
+  text: string;
+  options: { bold: boolean; italic: boolean };
 }
 
 export interface ImageOpts extends Box {
@@ -36,8 +43,9 @@ export interface ShapeOpts extends Box {
 }
 
 // pptxgen.Slide 중 우리가 쓰는 부분만. 테스트는 이걸 가짜로 구현한다.
+// 텍스트는 평문(string) 또는 조각 배열(TextChunk[]) 둘 다 받는다.
 export interface SlideSink {
-  addText(text: string, opts: TextOpts): void;
+  addText(text: string | TextChunk[], opts: TextOpts): void;
   addImage(opts: ImageOpts): void;
   addShape(shape: string, opts: ShapeOpts): void;
 }
@@ -48,11 +56,16 @@ export type ResolveChart = (el: ChartElement) => string;
 export function placeElement(slide: SlideSink, el: Element, resolveChart: ResolveChart): void {
   const box: Box = { x: el.x, y: el.y, w: el.w, h: el.h };
   switch (el.type) {
-    case "text":
-      slide.addText(el.text, {
+    case "text": {
+      // runs 가 있으면 조각별 강조를, 없으면 요소 단위 bold/italic 로 평문을 그린다.
+      const body: string | TextChunk[] = el.runs
+        ? el.runs.map((r) => ({ text: r.text, options: { bold: r.bold, italic: r.italic } }))
+        : el.text;
+      slide.addText(body, {
         ...box,
         fontSize: el.size,
         bold: el.bold,
+        italic: el.italic,
         color: el.color,
         align: el.align,
         // 위에서부터 흐르게 고정. 여러 줄로 접힌 상자에서 pptx 기본(가운데)이면
@@ -61,6 +74,7 @@ export function placeElement(slide: SlideSink, el: Element, resolveChart: Resolv
         bullet: el.bullet,
       });
       break;
+    }
     case "shape":
       slide.addShape(el.shape, {
         ...box,
@@ -110,7 +124,7 @@ export function buildPptx(deck: Deck, resolveChart: ResolveChart): pptxgen {
     const target = pptx.addSlide();
     const sink: SlideSink = {
       addText: (text, opts) => {
-        target.addText(text, opts as pptxgen.TextPropsOptions);
+        target.addText(text as string | pptxgen.TextProps[], opts as pptxgen.TextPropsOptions);
       },
       addImage: (opts) => {
         target.addImage(opts as pptxgen.ImageProps);

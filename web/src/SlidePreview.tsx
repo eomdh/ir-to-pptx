@@ -32,13 +32,17 @@ function ChartView({ el }: { el: ChartElement }) {
 
 function ElementView({ el }: { el: Element }) {
   switch (el.type) {
-    case "text":
+    case "text": {
+      // 조각 키는 배열 인덱스 대신 글자 오프셋으로 만든다. 결정적 IR 이라 오프셋은
+      // 안정적이고, 텍스트가 같은 조각이 있어도 오프셋이 달라 겹치지 않는다.
+      let offset = 0;
       return (
         <div
           style={{
             ...box(el),
             fontSize: el.size,
             fontWeight: el.bold ? 700 : 400,
+            fontStyle: el.italic ? "italic" : "normal",
             color: `#${el.color}`,
             textAlign: el.align,
             lineHeight: 1.25,
@@ -46,9 +50,27 @@ function ElementView({ el }: { el: Element }) {
             overflow: "hidden",
           }}
         >
-          {el.bullet ? `• ${el.text}` : el.text}
+          {el.bullet ? "• " : null}
+          {el.runs
+            ? el.runs.map((r) => {
+                const key = `${offset}:${r.text}`;
+                offset += r.text.length;
+                return (
+                  <span
+                    key={key}
+                    style={{
+                      fontWeight: r.bold ? 700 : 400,
+                      fontStyle: r.italic ? "italic" : "normal",
+                    }}
+                  >
+                    {r.text}
+                  </span>
+                );
+              })
+            : el.text}
         </div>
       );
+    }
     case "shape":
       return (
         <div

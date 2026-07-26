@@ -32,8 +32,10 @@ describe("placeElement", () => {
         type: "text",
         ...box,
         text: "매출 증가",
+        runs: null,
         size: 16,
         bold: false,
+        italic: false,
         color: "1A1A1A",
         align: "left",
         bullet: true,
@@ -55,6 +57,35 @@ describe("placeElement", () => {
       align: "left",
       bullet: true,
     });
+  });
+
+  it("runs 가 있으면 조각별 강조를 실은 배열로 addText 한다", () => {
+    const { sink, calls } = fakeSink();
+    placeElement(
+      sink,
+      {
+        type: "text",
+        ...box,
+        text: "보통 굵게",
+        runs: [
+          { text: "보통 ", bold: false, italic: false },
+          { text: "굵게", bold: true, italic: false },
+        ],
+        size: 16,
+        bold: false,
+        italic: false,
+        color: "1A1A1A",
+        align: "left",
+        bullet: false,
+      },
+      () => "",
+    );
+    const [text] = firstCall(calls).args as [unknown, Record<string, unknown>];
+    // 평문 문자열이 아니라 조각 배열이 넘어간다. 강조는 조각의 options 에 실린다.
+    expect(text).toEqual([
+      { text: "보통 ", options: { bold: false, italic: false } },
+      { text: "굵게", options: { bold: true, italic: false } },
+    ]);
   });
 
   it("shape 요소는 addShape(rect, fill) 로 간다", () => {
@@ -117,8 +148,10 @@ describe("orderByZ", () => {
         h: 1,
         z: 2,
         text: "위",
+        runs: null,
         size: 12,
         bold: false,
+        italic: false,
         color: "000000",
         align: "left",
         bullet: false,
@@ -132,8 +165,10 @@ describe("orderByZ", () => {
         h: 1,
         z: 0,
         text: "배경옆",
+        runs: null,
         size: 12,
         bold: false,
+        italic: false,
         color: "000000",
         align: "left",
         bullet: false,
@@ -161,8 +196,10 @@ describe("renderSlide", () => {
             h: 1,
             z: 1,
             text: "제목",
+            runs: null,
             size: 20,
             bold: true,
+            italic: false,
             color: "000000",
             align: "left",
             bullet: false,
