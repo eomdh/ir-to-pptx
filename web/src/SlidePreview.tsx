@@ -2,8 +2,8 @@
 // 좌표 계산이 여기 없다는 게 핵심이다. pptx.ts 와 이 파일은 같은 IR 을 서로
 // 다른 표면에 배치할 뿐이라, 화면과 파일이 같아진다.
 
-import { type CSSProperties, useMemo } from "react";
-import { renderChartPng } from "./chart";
+import { type CSSProperties, useEffect, useState } from "react";
+import { loadECharts, renderChartPng } from "./chart";
 import type { ChartElement, Deck, Element, Slide } from "./ir";
 
 // 인치당 픽셀. 72 로 두면 pt(폰트) 와 px 가 1:1 이라 크기 환산이 없다.
@@ -21,10 +21,19 @@ function box(el: Element): CSSProperties {
 }
 
 function ChartView({ el }: { el: ChartElement }) {
-  const png = useMemo(
-    () => renderChartPng(el.spec, el.w * PX * 2, el.h * PX * 2),
-    [el.spec, el.w, el.h],
-  );
+  const [png, setPng] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    // ECharts 를 지연 로드한다. 늦게 온 로드가 최신 spec 을 덮지 않도록 alive 로 막는다.
+    loadECharts().then((echarts) => {
+      if (alive) setPng(renderChartPng(echarts, el.spec, el.w * PX * 2, el.h * PX * 2));
+    });
+    return () => {
+      alive = false;
+    };
+  }, [el.spec, el.w, el.h]);
+  // 로드 전에는 빈 칸. 자리는 바깥 컨테이너가 이미 잡아 둬 레이아웃이 흔들리지 않는다.
+  if (!png) return null;
   return (
     <img src={png} alt="차트" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
   );

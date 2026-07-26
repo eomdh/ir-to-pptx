@@ -1,8 +1,8 @@
 import { Download, Presentation } from "lucide-react";
 import { useEffect, useState } from "react";
-import { renderChartPng } from "./chart";
+import { loadECharts, renderChartPng } from "./chart";
 import type { Deck } from "./ir";
-import { buildPptx, type ResolveChart } from "./pptx";
+import type { ResolveChart } from "./pptx";
 import { SlidePreview } from "./SlidePreview";
 import { SAMPLE_MARKDOWN } from "./sample";
 
@@ -39,11 +39,13 @@ export default function App() {
     };
   }, [markdown]);
 
-  function download() {
+  async function download() {
     if (!deck) return;
+    // 무거운 두 의존성(pptxgenjs, echarts)을 이때 처음 불러온다. 초기 로딩에는 빠져 있다.
+    const [{ buildPptx }, echarts] = await Promise.all([import("./pptx"), loadECharts()]);
     // 미리보기와 같은 renderChartPng 로 그림을 만든다. 다운로드는 더 큰 해상도로.
     const resolveChart: ResolveChart = (el) =>
-      renderChartPng(el.spec, el.w * 96 * 2, el.h * 96 * 2);
+      renderChartPng(echarts, el.spec, el.w * 96 * 2, el.h * 96 * 2);
     buildPptx(deck, resolveChart).writeFile({ fileName: "ir-to-pptx.pptx" });
   }
 
