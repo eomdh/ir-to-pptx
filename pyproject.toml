@@ -23,6 +23,8 @@ dependencies = [
 [dependency-groups]
 # httpx 는 FastAPI TestClient 가 안에서 쓴다.
 dev = ["pytest>=8", "ruff>=0.6", "httpx>=0.28"]
+# 폰트 폭 표를 다시 구울 때만 쓴다. 표는 커밋해 두므로 런타임과 CI 에는 필요 없다.
+tools = ["fonttools[woff]>=4.55"]
 
 [build-system]
 requires = ["hatchling"]
