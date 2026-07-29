@@ -47,6 +47,8 @@ function ElementView({ el }: { el: Element }) {
       let offset = 0;
       return (
         <div
+          // 줄 수 예측을 재는 하네스(measure.tsx)가 글상자를 찾는 표식.
+          data-text-el=""
           style={{
             ...box(el),
             fontSize: el.size,
