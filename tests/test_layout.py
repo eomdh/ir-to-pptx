@@ -1,10 +1,22 @@
 """레이아웃 엔진의 계약(contract) 스펙.
 
-여기 담긴 4가지가 곧 엔진이 지켜야 하는 약속이다. 아직 layout 구현이 없어
-전부 실패한다(TDD red). 구현이 이 스펙을 초록으로 만들면 계약이 성립한다.
+여기 담긴 것이 곧 엔진이 지켜야 하는 약속이다. 좌표를 픽셀까지 맞추기보다,
+블록이 겹치지 않고 세로 리듬이 고르며 같은 입력이 같은 좌표를 낸다는 성질을 못박는다.
 """
 
-from ir_pptx.layout import CONTENT_W, PARA_LINE_H, PARA_SIZE, layout
+import pytest
+
+from ir_pptx.blocks import Bullet
+from ir_pptx.layout import (
+    BULLET_GAP,
+    BULLET_SIZE,
+    CONTENT_W,
+    LINE_RATIO,
+    PARA_SIZE,
+    _block_height,
+    _bullet_box_h,
+    layout,
+)
 from ir_pptx.metrics import line_count
 
 
@@ -118,7 +130,8 @@ def test_긴_문단은_접히는_줄_수만큼_세로를_차지한다():
 
     n = line_count(long, CONTENT_W, PARA_SIZE)
     assert n >= 3
-    assert para.h == round(n * PARA_LINE_H, 3)
+    # 상자는 글이 차지하는 만큼만. 블록 뒤 여백은 상자 밖에 있다.
+    assert para.h == round(n * PARA_SIZE * LINE_RATIO / 72, 3)
 
 
 def test_긴_불릿은_다음_블록을_그만큼_아래로_민다():
@@ -171,3 +184,25 @@ def test_차트_펜스는_위치잡힌_차트요소가_된다():
     assert chart.w > 0 and chart.h > 0
     assert chart.x >= 0 and chart.y >= 0
     assert chart.x + chart.w <= deck.width + 1e-9
+
+
+def test_블록_뒤_여백은_줄_수와_무관하게_일정하다():
+    """예전에는 줄 높이 상수 하나가 줄 간격과 블록 여백을 겸해서, 줄이 늘면 여백도
+    배로 늘었다. 상자는 글 높이만 잡고 여백은 상자 밖에 두므로 이제 일정해야 한다."""
+    short = Bullet(text="짧다", level=0, runs=[])
+    long = Bullet(text="가" * 120, level=0, runs=[])
+    w = CONTENT_W
+
+    # 두 불릿의 줄 수는 다르지만
+    assert _bullet_box_h(long, w) > _bullet_box_h(short, w)
+    # 상자 뒤에 붙는 여백은 같다
+    for b in (short, long):
+        assert _block_height(b, w) - _bullet_box_h(b, w) == pytest.approx(BULLET_GAP)
+
+
+def test_글상자_높이는_글이_차지하는_만큼만_잡는다():
+    """상자에 여백까지 넣으면 위쪽 정렬이라 남는 자리가 아래에 깔리고, 줄 수가 늘수록
+    그 자리가 커져 세로 리듬이 깨진다."""
+    b = Bullet(text="가" * 120, level=0, runs=[])
+    lines = _bullet_box_h(b, CONTENT_W) / (BULLET_SIZE * LINE_RATIO / 72)
+    assert lines == pytest.approx(round(lines))

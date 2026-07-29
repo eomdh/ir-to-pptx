@@ -4,6 +4,7 @@
 
 import { type CSSProperties, useEffect, useState } from "react";
 import { loadECharts, renderChartPng } from "./chart";
+import { LINE_RATIO } from "./contract";
 import type { ChartElement, Deck, Element, Slide } from "./ir";
 
 // 인치당 픽셀. 72 로 두면 pt(폰트) 와 px 가 1:1 이라 크기 환산이 없다.
@@ -56,7 +57,7 @@ function ElementView({ el }: { el: Element }) {
             fontStyle: el.italic ? "italic" : "normal",
             color: `#${el.color}`,
             textAlign: el.align,
-            lineHeight: 1.25,
+            lineHeight: LINE_RATIO,
             whiteSpace: "pre-wrap",
             overflow: "hidden",
           }}

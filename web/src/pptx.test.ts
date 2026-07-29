@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
+import { FONT_FACE, LINE_RATIO } from "./contract";
 import type { Element } from "./ir";
-import { FONT_FACE, orderByZ, placeElement, renderSlide, type SlideSink } from "./pptx";
+import { orderByZ, placeElement, renderSlide, type SlideSink } from "./pptx";
 
 type Call = { m: string; args: unknown[] };
 
@@ -58,6 +59,32 @@ describe("placeElement", () => {
       align: "left",
       bullet: true,
     });
+  });
+
+  it("줄간격과 안쪽 여백을 못박아 보낸다", () => {
+    // 줄간격을 안 실으면 파워포인트가 제 기본값으로 그려서, 엔진이 그 비율로 잡은
+    // 상자에 다른 줄 수가 들어간다. 여백을 안 실으면 기본 여백이 붙어 글 놓일 폭이
+    // IR 의 w 보다 좁아지고, 그러면 파일에서만 줄이 먼저 접힌다.
+    const { sink, calls } = fakeSink();
+    placeElement(
+      sink,
+      {
+        type: "text",
+        ...box,
+        text: "본문",
+        runs: null,
+        size: 16,
+        bold: false,
+        italic: false,
+        color: "1A1A1A",
+        align: "left",
+        bullet: false,
+      },
+      () => "",
+    );
+    const [, opts] = firstCall(calls).args as [string, Record<string, unknown>];
+    expect(opts.lineSpacing).toBe(16 * LINE_RATIO);
+    expect(opts.margin).toBe(0);
   });
 
   it("모든 글상자에 폰트를 실어 보낸다", () => {

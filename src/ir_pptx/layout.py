@@ -69,10 +69,19 @@ SUBHEAD_H = 0.42
 SUBHEAD_TOP_GAP = 0.12
 BULLET_INDENT = 0.35
 BULLET_SIZE = 16
-BULLET_LINE_H = 0.42
 PARA_SIZE = 16
-PARA_LINE_H = 0.4
-BLOCK_GAP = 0.18  # 이미지·차트 아래 여백
+BLOCK_GAP = 0.18  # 이미지, 차트 아래 여백
+
+# 한 줄이 차지하는 세로는 글자 크기에 비례한다. 1.25 는 세 곳이 함께 보는 값이라
+# 여기서 바꾸면 `web/src/SlidePreview.tsx`(lineHeight)와 `web/src/pptx.ts`(lineSpacing)도
+# 같이 바꿔야 한다. 폰트를 고정한 것과 같은 이유로 줄 간격도 계약이다.
+LINE_RATIO = 1.25
+
+# 블록 뒤 여백. 예전에는 줄 높이 상수 하나(불릿 0.42, 문단 0.4)가 줄 간격과 이 여백을
+# 겸해서, 줄 수가 늘면 여백도 배로 늘었다(4줄 불릿 뒤 간격이 1줄 뒤의 4배). 값은 예전
+# 한 줄짜리의 여백을 그대로 옮긴 것이라 한 줄 블록의 모양은 바뀌지 않는다.
+BULLET_GAP = 0.14
+PARA_GAP = 0.12
 IMAGE_H = 3.0
 CHART_H = 3.2
 
@@ -184,6 +193,11 @@ def _emphasis_runs(runs: list[TextRun]) -> list[TextRun] | None:
     return runs if any(r.bold or r.italic for r in runs) else None
 
 
+def _line_h(size_pt: float) -> float:
+    """글자 크기에서 한 줄이 차지하는 세로(인치)."""
+    return size_pt * LINE_RATIO / 72.0
+
+
 def _bullet_lines(block: Bullet, width: float) -> int:
     # 불릿은 들여쓰기만큼 글줄 폭이 좁아짐.
     return line_count(block.text, width - _bullet_indent(block.level), BULLET_SIZE)
@@ -193,15 +207,27 @@ def _para_lines(block: Paragraph, width: float) -> int:
     return line_count(block.text, width, PARA_SIZE)
 
 
+def _bullet_box_h(block: Bullet, width: float) -> float:
+    # 글상자 높이는 글이 실제로 차지하는 만큼만. 블록 사이 여백은 상자 밖(_block_height)이다.
+    return _bullet_lines(block, width) * _line_h(BULLET_SIZE)
+
+
+def _para_box_h(block: Paragraph, width: float) -> float:
+    return _para_lines(block, width) * _line_h(PARA_SIZE)
+
+
 def _block_height(block: Block, width: float) -> float:
+    # 커서가 이 블록 때문에 내려가는 양이다. 글상자 높이에 블록 뒤 여백을 더한 값이라
+    # `_place` 가 잡는 상자 높이보다 크다. 그 차이가 다음 블록과의 간격이 된다.
+    #
     # width = 이 블록이 놓일 가로 폭(인치). 불릿과 문단은 이 폭에서 몇 줄로 접히는지에
     # 따라 세로가 늘어나므로, 높이를 알려면 폭이 필요.
     if isinstance(block, Heading):
         return SUBHEAD_TOP_GAP + SUBHEAD_H
     if isinstance(block, Bullet):
-        return _bullet_lines(block, width) * BULLET_LINE_H
+        return _bullet_box_h(block, width) + BULLET_GAP
     if isinstance(block, Paragraph):
-        return _para_lines(block, width) * PARA_LINE_H
+        return _para_box_h(block, width) + PARA_GAP
     if isinstance(block, Image):
         return IMAGE_H + BLOCK_GAP
     if isinstance(block, Chart):
@@ -261,9 +287,9 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 x=_r(region.x + indent),
                 y=_r(y),
                 w=_r(region.w - indent),
-                # 접히는 줄 수만큼 상자를 늘림. 높이 예산(_block_height)과 같은 값이라
-                # 다음 블록이 이 상자 바로 아래에서 시작.
-                h=_r(_bullet_lines(block, region.w) * BULLET_LINE_H),
+                # 접히는 줄 수만큼만 상자를 잡음. 블록 뒤 여백은 여기 안 넣는다.
+                # 상자에 넣으면 줄 수가 늘 때 여백도 같이 늘어 세로 리듬이 깨진다.
+                h=_r(_bullet_box_h(block, region.w)),
                 z=1,
                 text=block.text,
                 runs=_emphasis_runs(block.runs),
@@ -279,7 +305,7 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 x=_r(region.x),
                 y=_r(y),
                 w=_r(region.w),
-                h=_r(_para_lines(block, region.w) * PARA_LINE_H),
+                h=_r(_para_box_h(block, region.w)),
                 z=1,
                 text=block.text,
                 runs=_emphasis_runs(block.runs),

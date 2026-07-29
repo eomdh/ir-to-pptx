@@ -7,14 +7,11 @@
 // 안 띄우고도 디스패치를 단위 테스트할 수 있게 한다(buildPptx 에서만 진짜 pptxgen 에 붙인다).
 
 import pptxgen from "pptxgenjs";
+import { FONT_FACE, LINE_RATIO, TEXT_INSET } from "./contract";
 import type { Align, ChartElement, Deck, Element, Slide } from "./ir";
 
-// 두 렌더러가 같은 폰트를 써야 같은 자리에서 줄이 접힌다. 여기서 안 지정하면
-// 파워포인트가 테마 기본 폰트로 그려서, 미리보기(index.css)와 폭이 달라진다.
-// 레이아웃 엔진의 폭 테이블(metrics.py)도 같은 폰트를 잰 것이어야 한다.
-// 받는 쪽 장비에 이 폰트가 없으면 대체 폰트로 떨어진다. pptxgenjs 는 폰트 임베딩을
-// 지원하지 않아 이건 못 막는다(README 한계).
-export const FONT_FACE = "Pretendard";
+// 폰트와 줄 높이는 `contract.ts` 에 있다. 받는 쪽 장비에 그 폰트가 없으면 대체 폰트로
+// 떨어지는데, pptxgenjs 가 폰트 임베딩을 지원하지 않아 이건 못 막는다(README 한계).
 
 interface Box {
   x: number;
@@ -26,6 +23,8 @@ interface Box {
 export interface TextOpts extends Box {
   fontFace: string;
   fontSize: number;
+  lineSpacing: number;
+  margin: number;
   bold: boolean;
   italic: boolean;
   color: string;
@@ -73,6 +72,10 @@ export function placeElement(slide: SlideSink, el: Element, resolveChart: Resolv
         ...box,
         fontFace: FONT_FACE,
         fontSize: el.size,
+        // "정확히" 줄간격(pt). 폰트가 무엇이든 줄 높이가 이 값으로 고정돼,
+        // 엔진이 잡은 상자 높이와 실제 줄 수가 어긋나지 않는다.
+        lineSpacing: el.size * LINE_RATIO,
+        margin: TEXT_INSET,
         bold: el.bold,
         italic: el.italic,
         color: el.color,

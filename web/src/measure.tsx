@@ -21,19 +21,13 @@
 import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
+import { LINE_RATIO } from "./contract";
 import type { Deck, TextElement } from "./ir";
 import { PROBE_MARKDOWN } from "./probes";
 import { SlidePreview } from "./SlidePreview";
 
 // SlidePreview 와 같은 인치당 픽셀.
 const PX = 72;
-
-// layout.py 의 높이 공식을 되짚기 위한 값. 엔진이 h 를 어떻게 잡는지 알아야
-// 거기서 "엔진이 예측한 줄 수" 를 되돌릴 수 있다. layout.py 를 고치면 여기도 고친다.
-const BULLET_LINE_H = 0.42;
-const PARA_LINE_H = 0.4;
-const BULLET_GAP = 0;
-const PARA_GAP = 0;
 
 // 줄 수로 높이를 잡는 블록은 불릿과 문단뿐이고, 둘 다 16pt 다(layout.py 의
 // BULLET_SIZE, PARA_SIZE). 제목 28, 소제목 18, 표 13, KPI 24/12 는 고정 높이라 뺀다.
@@ -44,14 +38,15 @@ interface Row {
   bullet: boolean;
   predicted: number;
   actual: number;
-  budgetIn: number;
-  contentIn: number;
+  boxIn: number; // IR 이 잡은 상자 높이
+  contentIn: number; // 실제로 글이 차지한 높이
+  gapIn: number | null; // 글 끝에서 다음 블록 시작까지. 마지막 블록이면 없음
 }
 
-interface SlackByLines {
+interface GapByLines {
   lines: number;
   count: number;
-  slackIn: number;
+  gapIn: number;
 }
 
 interface Summary {
@@ -59,21 +54,19 @@ interface Summary {
   wrong: number;
   under: number; // 실제 > 예측, 겹침 위험
   over: number; // 실제 < 예측, 빈 자리
-  wrongLines: number;
-  overflowed: number; // 남는 자리가 음수, 글이 상자 밖으로
-  slackByLines: SlackByLines[];
-  slackSpreadIn: number; // 줄 수별 남는 자리의 최대와 최소 차이
+  overflowed: number; // 글이 상자 밖으로
+  gapByLines: GapByLines[];
+  gapSpreadIn: number; // 줄 수별 간격의 최대와 최소 차이
 }
 
 function predictedLines(el: TextElement): number {
-  const [lineH, gap] = el.bullet ? [BULLET_LINE_H, BULLET_GAP] : [PARA_LINE_H, PARA_GAP];
-  return Math.round((el.h - gap) / lineH);
+  // 엔진이 상자 높이를 줄수 × 줄높이 로 잡으므로 나누면 예측 줄 수가 되돌아 나온다.
+  return Math.round(el.h / ((el.size * LINE_RATIO) / 72));
 }
 
 function summarize(rows: Row[]): Summary {
   let under = 0;
   let over = 0;
-  let wrongLines = 0;
   let overflowed = 0;
   const buckets = new Map<number, number[]>();
 
@@ -81,34 +74,69 @@ function summarize(rows: Row[]): Summary {
     const diff = r.actual - r.predicted;
     if (diff > 0) under += 1;
     else if (diff < 0) over += 1;
-    wrongLines += Math.abs(diff);
+    if (r.contentIn - r.boxIn > 0.001) overflowed += 1;
 
-    const slack = r.budgetIn - r.contentIn;
-    if (slack < -0.001) overflowed += 1;
-    const bucket = buckets.get(r.actual) ?? [];
-    bucket.push(slack);
-    buckets.set(r.actual, bucket);
+    if (r.gapIn !== null) {
+      const bucket = buckets.get(r.actual) ?? [];
+      bucket.push(r.gapIn);
+      buckets.set(r.actual, bucket);
+    }
   }
 
-  const slackByLines = [...buckets.entries()]
+  const gapByLines = [...buckets.entries()]
     .sort((a, b) => a[0] - b[0])
-    .map(([lines, slacks]) => ({
+    .map(([lines, gaps]) => ({
       lines,
-      count: slacks.length,
-      slackIn: slacks.reduce((a, b) => a + b, 0) / slacks.length,
+      count: gaps.length,
+      gapIn: gaps.reduce((a, b) => a + b, 0) / gaps.length,
     }));
-  const averages = slackByLines.map((s) => s.slackIn);
+  const averages = gapByLines.map((g) => g.gapIn);
 
   return {
     total: rows.length,
     wrong: under + over,
     under,
     over,
-    wrongLines,
     overflowed,
-    slackByLines,
-    slackSpreadIn: averages.length ? Math.max(...averages) - Math.min(...averages) : 0,
+    gapByLines,
+    gapSpreadIn: averages.length ? Math.max(...averages) - Math.min(...averages) : 0,
   };
+}
+
+/**
+ * 슬라이드마다 16pt 글상자를 모아, 각 상자의 실제 크기와 다음 블록까지의 간격을 잰다.
+ *
+ * 간격을 IR 의 h 가 아니라 실제로 잰 글 높이에서 재는 게 요점이다. 상자가 글보다 크면
+ * 그 남는 자리도 결국 간격으로 보이기 때문에, 화면에서 눈에 들어오는 간격은
+ * `다음 블록 y - (내 y + 실제 글 높이)` 다.
+ */
+function collect(deck: Deck, boxes: HTMLElement[]): Row[] {
+  const rows: Row[] = [];
+  let i = 0;
+  for (const slide of deck.slides) {
+    const paired: { el: TextElement; box: HTMLElement }[] = [];
+    for (const el of slide.elements) {
+      if (el.type !== "text") continue;
+      const box = boxes[i++]; // DOM 순서와 IR 순서가 같다
+      if (box && el.size === LINE_SIZED_PT) paired.push({ el, box });
+    }
+    const measured = paired.map((p) => ({ ...p, ...measureBox(p.box) }));
+    measured.forEach((m, k) => {
+      const next = measured[k + 1];
+      // 컬럼처럼 옆으로 놓인 블록은 아래로 이어지는 게 아니라 간격을 재지 않는다.
+      const flows = next && next.el.y > m.el.y;
+      rows.push({
+        text: m.el.text,
+        bullet: m.el.bullet,
+        predicted: predictedLines(m.el),
+        actual: m.lines,
+        boxIn: m.el.h,
+        contentIn: m.contentIn,
+        gapIn: flows && next ? next.el.y - (m.el.y + m.contentIn) : null,
+      });
+    });
+  }
+  return rows;
 }
 
 /** 글상자를 복제해 높이 제한만 풀고, 실제 줄 수와 글 높이를 잰다. */
@@ -139,22 +167,7 @@ function Report({ deck }: { deck: Deck }) {
         if (!alive || !host) return;
         // DOM 순서와 IR 순서가 같다(SlidePreview 가 elements 를 그 순서로 그린다).
         const boxes = Array.from(host.querySelectorAll<HTMLElement>("[data-text-el]"));
-        const all = deck.slides.flatMap((s) => s.elements.filter((el) => el.type === "text"));
-        const measured: Row[] = [];
-        all.forEach((el, i) => {
-          const box = boxes[i];
-          if (!box || el.size !== LINE_SIZED_PT) return;
-          const { lines, contentIn } = measureBox(box);
-          measured.push({
-            text: el.text,
-            bullet: el.bullet,
-            predicted: predictedLines(el),
-            actual: lines,
-            budgetIn: el.h,
-            contentIn,
-          });
-        });
-        setRows(measured);
+        setRows(collect(deck, boxes));
       }, 150),
     );
     return () => {
@@ -180,7 +193,7 @@ function Report({ deck }: { deck: Deck }) {
                 ["줄 수 어긋남", `${s.wrong}개 (${((s.wrong / s.total) * 100).toFixed(1)}%)`],
                 ["과소 예측", `${s.under}개 (겹침 위험)`],
                 ["넘친 상자", `${s.overflowed}개 (글이 상자 밖으로)`],
-                ["남는 자리 편차", `${s.slackSpreadIn.toFixed(3)}in (줄 수별 평균의 최대 최소 차)`],
+                ["블록 간격 편차", `${s.gapSpreadIn.toFixed(3)}in (줄 수별 평균의 최대 최소 차)`],
               ].map(([k, v]) => (
                 <tr key={k}>
                   <td className="border border-neutral-200 px-3 py-1 text-neutral-500">{k}</td>
@@ -190,15 +203,15 @@ function Report({ deck }: { deck: Deck }) {
             </tbody>
           </table>
 
-          <h2 className="mb-2 font-semibold">줄 수별 남는 자리</h2>
+          <h2 className="mb-2 font-semibold">줄 수별 블록 간격</h2>
           <p className="mb-2 text-neutral-500">
-            상자 높이에서 글 높이를 뺀 값. 위쪽 정렬이라 전부 아래에 깔려 다음 블록과의 간격이 된다.
-            줄 수가 늘어도 일정해야 세로 리듬이 고르다.
+            글이 끝난 자리에서 다음 블록이 시작하는 자리까지. 앞 블록이 몇 줄이든 같아야 세로 리듬이
+            고르다. 줄 수를 따라 커지면 긴 불릿 뒤만 헐렁해 보인다.
           </p>
           <table className="mb-6 border-collapse">
             <tbody>
               <tr>
-                {s.slackByLines.map((b) => (
+                {s.gapByLines.map((b) => (
                   <td
                     key={b.lines}
                     className="border border-neutral-200 px-3 py-1 text-neutral-500"
@@ -208,14 +221,14 @@ function Report({ deck }: { deck: Deck }) {
                 ))}
               </tr>
               <tr>
-                {s.slackByLines.map((b) => (
+                {s.gapByLines.map((b) => (
                   <td
                     key={b.lines}
                     className={`border border-neutral-200 px-3 py-1 font-semibold ${
-                      b.slackIn < 0 ? "text-red-600" : ""
+                      b.gapIn < 0 ? "text-red-600" : ""
                     }`}
                   >
-                    {b.slackIn.toFixed(3)}in
+                    {b.gapIn.toFixed(3)}in
                   </td>
                 ))}
               </tr>
