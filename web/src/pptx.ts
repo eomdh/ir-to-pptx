@@ -9,6 +9,13 @@
 import pptxgen from "pptxgenjs";
 import type { Align, ChartElement, Deck, Element, Slide } from "./ir";
 
+// 두 렌더러가 같은 폰트를 써야 같은 자리에서 줄이 접힌다. 여기서 안 지정하면
+// 파워포인트가 테마 기본 폰트로 그려서, 미리보기(index.css)와 폭이 달라진다.
+// 레이아웃 엔진의 폭 테이블(metrics.py)도 같은 폰트를 잰 것이어야 한다.
+// 받는 쪽 장비에 이 폰트가 없으면 대체 폰트로 떨어진다. pptxgenjs 는 폰트 임베딩을
+// 지원하지 않아 이건 못 막는다(README 한계).
+export const FONT_FACE = "Pretendard";
+
 interface Box {
   x: number;
   y: number;
@@ -17,6 +24,7 @@ interface Box {
 }
 
 export interface TextOpts extends Box {
+  fontFace: string;
   fontSize: number;
   bold: boolean;
   italic: boolean;
@@ -63,6 +71,7 @@ export function placeElement(slide: SlideSink, el: Element, resolveChart: Resolv
         : el.text;
       slide.addText(body, {
         ...box,
+        fontFace: FONT_FACE,
         fontSize: el.size,
         bold: el.bold,
         italic: el.italic,

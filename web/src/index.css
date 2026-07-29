@@ -1,5 +1,26 @@
 @import "tailwindcss";
 
+/* 폰트 고정이 "보이는 대로 나온다"의 전제다. 미리보기가 OS 기본 폰트를 쓰면 글자 폭이
+   기기마다 달라지고, 그러면 레이아웃 엔진이 어떤 폭으로 줄을 세든 화면과 어긋난다.
+   woff2 를 저장소에 넣어 CDN 없이 같은 폰트가 뜨게 한다.
+   이름은 pptx.ts 의 FONT_FACE, metrics.py 의 폭 테이블과 같은 폰트를 가리켜야 한다. */
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  /* swap 이면 폴백으로 한 번 그리고 바꿔치므로 잠깐 다른 폭으로 접힌다. 그 순간을 없앤다. */
+  font-display: block;
+}
+
+@font-face {
+  font-family: "Pretendard";
+  src: url("/fonts/Pretendard-Bold.woff2") format("woff2");
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
 html,
 body,
 #root {
@@ -8,5 +29,5 @@ body,
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
+  font-family: "Pretendard", system-ui, -apple-system, "Apple SD Gothic Neo", sans-serif;
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Element } from "./ir";
-import { orderByZ, placeElement, renderSlide, type SlideSink } from "./pptx";
+import { FONT_FACE, orderByZ, placeElement, renderSlide, type SlideSink } from "./pptx";
 
 type Call = { m: string; args: unknown[] };
 
@@ -52,11 +52,42 @@ describe("placeElement", () => {
       y: 2,
       w: 3,
       h: 0.5,
+      fontFace: FONT_FACE,
       fontSize: 16,
       color: "1A1A1A",
       align: "left",
       bullet: true,
     });
+  });
+
+  it("모든 글상자에 폰트를 실어 보낸다", () => {
+    // 안 실으면 파워포인트가 테마 기본 폰트로 그린다. 그러면 미리보기와 폭이 달라져
+    // 엔진이 잡은 줄 수가 파일에서만 어긋난다. 계약이라 요소 종류와 무관하게 걸린다.
+    const { sink, calls } = fakeSink();
+    const common = { runs: null, bold: false, italic: false, color: "1A1A1A" } as const;
+    renderSlide(
+      sink,
+      {
+        elements: [
+          { type: "text", ...box, text: "제목", size: 28, align: "left", bullet: false, ...common },
+          { type: "text", ...box, text: "불릿", size: 16, align: "left", bullet: true, ...common },
+          {
+            type: "text",
+            ...box,
+            text: "표 칸",
+            size: 13,
+            align: "right",
+            bullet: false,
+            ...common,
+          },
+        ],
+      },
+      () => "",
+    );
+    expect(calls).toHaveLength(3);
+    for (const c of calls) {
+      expect((c.args[1] as Record<string, unknown>).fontFace).toBe(FONT_FACE);
+    }
   });
 
   it("runs 가 있으면 조각별 강조를 실은 배열로 addText 한다", () => {
