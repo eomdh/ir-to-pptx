@@ -6,7 +6,7 @@
 
 import pytest
 
-from ir_pptx.blocks import Bullet
+from ir_pptx.blocks import Bullet, Heading, Kpi, KpiTile, Table
 from ir_pptx.layout import (
     BULLET_GAP,
     BULLET_SIZE,
@@ -15,6 +15,8 @@ from ir_pptx.layout import (
     PARA_SIZE,
     _block_height,
     _bullet_box_h,
+    _kpi_h,
+    _table_row_heights,
     layout,
 )
 from ir_pptx.metrics import line_count
@@ -206,3 +208,54 @@ def test_글상자_높이는_글이_차지하는_만큼만_잡는다():
     b = Bullet(text="가" * 120, level=0, runs=[])
     lines = _bullet_box_h(b, CONTENT_W) / (BULLET_SIZE * LINE_RATIO / 72)
     assert lines == pytest.approx(round(lines))
+
+
+def test_표는_긴_칸이_있는_행만_높아진다():
+    """행 높이가 고정이던 시절엔 긴 칸 글이 아래 행 위로 넘쳤다. 이제 그 행만 큰다."""
+    long_cell = "대형 고객 갱신 협상을 3분기 내 마무리하고 이탈 위험군을 별도로 관리한다"
+    t = Table(header=["채널", "설명"], rows=[["파트너", "짧다"], ["다이렉트", long_cell]])
+    header_h, short_h, long_h = _table_row_heights(t, CONTENT_W)
+
+    assert header_h == short_h  # 한 줄짜리끼리는 같고
+    assert long_h > short_h  # 접힌 행만 커진다
+
+
+def test_kpi_타일은_라벨이_접히면_함께_높아진다():
+    """타일은 한 행이라 높이를 공유한다. 가장 많이 접힌 라벨이 행 높이를 정한다."""
+    short = Kpi(tiles=[KpiTile(label=f"라벨{i}", value="1", delta=None) for i in range(4)])
+    long = Kpi(
+        tiles=[
+            KpiTile(label="엔터프라이즈 신규 고객 수", value="1", delta=None),
+            *(KpiTile(label=f"라벨{i}", value="1", delta=None) for i in range(3)),
+        ]
+    )
+    assert _kpi_h(long, CONTENT_W) > _kpi_h(short, CONTENT_W)
+
+
+def test_긴_소제목은_접히는_줄_수만큼_자리를_차지한다():
+    long = (
+        "파트너 채널 확대와 마켓플레이스 재편을 통한 하반기 매출 구조 개선 방향"
+        " 그리고 분기별 실행 계획과 점검 지표"
+    )
+    assert _block_height(Heading(text=long, level=2), CONTENT_W) > _block_height(
+        Heading(text="짧은 소제목", level=2), CONTENT_W
+    )
+
+
+def test_kpi_라벨과_delta는_가로로_겹치지_않는다():
+    """둘은 같은 줄의 왼쪽과 오른쪽이다. 폭을 나눠 갖지 않으면 라벨이 길 때
+    delta 위로 글이 올라와 겹친다."""
+    # 타일이 넷이면 한 칸이 좁아져 긴 라벨이 실제로 접힌다.
+    md = (
+        "# 지표\n\n```kpi\n"
+        '[{"label":"엔터프라이즈 신규 고객 수","value":"240곳","delta":"+31%"},'
+        '{"label":"매출","value":"63억","delta":"+18%"},'
+        '{"label":"이탈률","value":"5.1%","delta":"-0.6%p"},'
+        '{"label":"NPS","value":"48","delta":"+6"}]\n```\n'
+    )
+    texts = _texts(layout(md).slides[0])
+    label = next(t for t in texts if t.text == "엔터프라이즈 신규 고객 수")
+    delta = next(t for t in texts if t.text == "+31%")
+
+    assert label.h > delta.h  # 라벨은 접혀서 더 높고
+    assert label.x + label.w <= delta.x  # 가로로는 서로 침범하지 않는다

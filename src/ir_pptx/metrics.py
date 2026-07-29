@@ -52,6 +52,11 @@ def char_em(o: int) -> float:
     return FALLBACK_EM
 
 
+def text_width(text: str, size_pt: float) -> float:
+    """한 줄로 폈을 때 차지하는 가로 폭(인치). 접히지 않는 짧은 글의 자리를 잡을 때 쓴다."""
+    return sum(char_em(ord(ch)) for ch in text) * size_pt / 72.0
+
+
 def _units(text: str):
     """줄에 놓을 단위를 (폭_em, 종류)로 내보내는 제너레이터.
 

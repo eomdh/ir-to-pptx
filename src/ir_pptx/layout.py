@@ -36,7 +36,7 @@ from ir_pptx.ir import (
     TextElement,
     TextRun,
 )
-from ir_pptx.metrics import line_count
+from ir_pptx.metrics import line_count, text_width
 
 # 슬라이드(16:9). pptxgenjs 기본 레이아웃과 같은 값.
 SLIDE_W = 10.0
@@ -65,7 +65,6 @@ ACCENT_H = 0.06
 CONTENT_TOP = 1.55
 CONTENT_BOTTOM = SLIDE_H - 0.4  # 5.225
 SUBHEAD_SIZE = 18
-SUBHEAD_H = 0.42
 SUBHEAD_TOP_GAP = 0.12
 BULLET_INDENT = 0.35
 BULLET_SIZE = 16
@@ -82,17 +81,24 @@ LINE_RATIO = 1.25
 # 한 줄짜리의 여백을 그대로 옮긴 것이라 한 줄 블록의 모양은 바뀌지 않는다.
 BULLET_GAP = 0.14
 PARA_GAP = 0.12
+SUBHEAD_GAP = 0.11
 IMAGE_H = 3.0
 CHART_H = 3.2
 
 # KPI 지표 타일
-KPI_H = 1.15
-KPI_GAP = 0.22
-KPI_PAD = 0.22
+KPI_VALUE_SIZE = 24
+KPI_LABEL_SIZE = 12
+KPI_GAP = 0.22  # 타일 사이 가로 간격
+KPI_PAD = 0.22  # 타일 안쪽 좌우 여백
+KPI_TOP_PAD = 0.22
+KPI_MID_GAP = 0.103  # 값과 라벨 사이
+KPI_BOTTOM_PAD = 0.2
+KPI_DELTA_GAP = 0.08  # 라벨과 delta 사이 최소 간격
 
 # 표
-TABLE_ROW_H = 0.42
-TABLE_PAD = 0.14
+TABLE_SIZE = 13
+TABLE_ROW_PAD = 0.194  # 행 위아래 여백을 합한 값
+TABLE_PAD = 0.14  # 셀 좌우 여백
 
 COLOR_TITLE = "12213A"
 COLOR_TEXT = "1A1A1A"
@@ -216,6 +222,67 @@ def _para_box_h(block: Paragraph, width: float) -> float:
     return _para_lines(block, width) * _line_h(PARA_SIZE)
 
 
+def _head_box_h(block: Heading, width: float) -> float:
+    return line_count(block.text, width, SUBHEAD_SIZE) * _line_h(SUBHEAD_SIZE)
+
+
+def _table_col_w(block: Table, width: float) -> float:
+    ncols = _table_cols(block)
+    return width / ncols if ncols else 0.0
+
+
+def _table_cols(block: Table) -> int:
+    return len(block.header) or max((len(r) for r in block.rows), default=0)
+
+
+def _table_row_heights(block: Table, width: float) -> list[float]:
+    """헤더부터 순서대로 각 행의 높이. 행은 그 안에서 가장 많이 접힌 칸을 따라간다."""
+    col_w = _table_col_w(block, width) - 2 * TABLE_PAD
+    if col_w <= 0:
+        return []
+
+    def row_h(cells: list[str]) -> float:
+        lines = max((line_count(c, col_w, TABLE_SIZE) for c in cells), default=1)
+        return lines * _line_h(TABLE_SIZE) + TABLE_ROW_PAD
+
+    return [row_h(block.header), *(row_h(cells) for cells in block.rows)]
+
+
+def _kpi_delta_w(block: Kpi) -> float:
+    """오른쪽에 붙는 delta 가 먹는 폭. 가장 긴 것에 맞춰 한 행이 같은 자리를 쓴다."""
+    widths = [text_width(t.delta, KPI_LABEL_SIZE) for t in block.tiles if t.delta]
+    return max(widths) + KPI_DELTA_GAP if widths else 0.0
+
+
+def _kpi_label_w(block: Kpi, width: float) -> float:
+    # 라벨과 delta 는 같은 줄에 왼쪽 오른쪽으로 붙는다. 둘이 폭을 나눠 갖지 않으면
+    # 라벨이 길 때 delta 위로 글이 올라와 겹친다.
+    return _kpi_tile_w(block, width) - 2 * KPI_PAD - _kpi_delta_w(block)
+
+
+def _kpi_label_lines(block: Kpi, width: float) -> int:
+    """타일 라벨이 접히는 최대 줄 수. 한 행의 타일은 높이를 함께 쓴다."""
+    label_w = _kpi_label_w(block, width)
+    if label_w <= 0:
+        return 1
+    return max((line_count(t.label, label_w, KPI_LABEL_SIZE) for t in block.tiles), default=1)
+
+
+def _kpi_tile_w(block: Kpi, width: float) -> float:
+    n = len(block.tiles)
+    return (width - (n - 1) * KPI_GAP) / n if n else 0.0
+
+
+def _kpi_h(block: Kpi, width: float) -> float:
+    return (
+        KPI_TOP_PAD
+        + _line_h(KPI_VALUE_SIZE)
+        + KPI_MID_GAP
+        + _kpi_label_lines(block, width) * _line_h(KPI_LABEL_SIZE)
+        + KPI_BOTTOM_PAD
+    )
+
+
 def _block_height(block: Block, width: float) -> float:
     # 커서가 이 블록 때문에 내려가는 양이다. 글상자 높이에 블록 뒤 여백을 더한 값이라
     # `_place` 가 잡는 상자 높이보다 크다. 그 차이가 다음 블록과의 간격이 된다.
@@ -223,7 +290,7 @@ def _block_height(block: Block, width: float) -> float:
     # width = 이 블록이 놓일 가로 폭(인치). 불릿과 문단은 이 폭에서 몇 줄로 접히는지에
     # 따라 세로가 늘어나므로, 높이를 알려면 폭이 필요.
     if isinstance(block, Heading):
-        return SUBHEAD_TOP_GAP + SUBHEAD_H
+        return SUBHEAD_TOP_GAP + _head_box_h(block, width) + SUBHEAD_GAP
     if isinstance(block, Bullet):
         return _bullet_box_h(block, width) + BULLET_GAP
     if isinstance(block, Paragraph):
@@ -233,9 +300,9 @@ def _block_height(block: Block, width: float) -> float:
     if isinstance(block, Chart):
         return CHART_H + BLOCK_GAP
     if isinstance(block, Kpi):
-        return KPI_H + BLOCK_GAP
+        return _kpi_h(block, width) + BLOCK_GAP
     if isinstance(block, Table):
-        return (len(block.rows) + 1) * TABLE_ROW_H + BLOCK_GAP
+        return sum(_table_row_heights(block, width)) + BLOCK_GAP
     if isinstance(block, Columns):
         # 가장 높은 칸이 이 블록의 높이. 칸이 좁아지면 그 안 텍스트가 더 접히므로,
         # 칸 폭을 구해 그 폭으로 각 칸 높이를 구함.
@@ -271,7 +338,7 @@ def _place(slide: Slide, block: Block, y: float, region: Region) -> None:
                 x=_r(region.x),
                 y=_r(y + SUBHEAD_TOP_GAP),
                 w=_r(region.w),
-                h=_r(SUBHEAD_H),
+                h=_r(_head_box_h(block, region.w)),
                 z=1,
                 text=block.text,
                 size=SUBHEAD_SIZE,
@@ -358,27 +425,33 @@ def _place_columns(slide: Slide, block: Columns, y: float, region: Region) -> No
 
 
 def _place_table(slide: Slide, block: Table, y: float, region: Region) -> None:
-    ncols = len(block.header) or max((len(r) for r in block.rows), default=0)
+    ncols = _table_cols(block)
     if ncols == 0:
         return
-    col_w = region.w / ncols
+    col_w = _table_col_w(block, region.w)
+    # 행마다 높이가 다르다. 칸 글이 접히면 그 행만 커진다.
+    heights = _table_row_heights(block, region.w)
+    if not heights:
+        return
 
-    def put_row(cells: list[str], row_y: float, *, bold: bool, color: str) -> None:
+    def put_row(cells: list[str], row_y: float, row_h: float, *, bold: bool, color: str) -> None:
         for c in range(ncols):
             slide.elements.append(
                 TextElement(
                     x=_r(region.x + c * col_w + TABLE_PAD),
-                    y=_r(row_y + 0.06),
+                    y=_r(row_y + TABLE_ROW_PAD / 2),
                     w=_r(col_w - 2 * TABLE_PAD),
-                    h=_r(TABLE_ROW_H - 0.1),
+                    h=_r(row_h - TABLE_ROW_PAD),
                     z=1,
                     text=cells[c] if c < len(cells) else "",
-                    size=13,
+                    size=TABLE_SIZE,
                     bold=bold,
                     color=color,
                     align="left",
                 )
             )
+
+    head_h, *body_h = heights
 
     # 헤더 배경 + 텍스트
     slide.elements.append(
@@ -386,22 +459,23 @@ def _place_table(slide: Slide, block: Table, y: float, region: Region) -> None:
             x=_r(region.x),
             y=_r(y),
             w=_r(region.w),
-            h=_r(TABLE_ROW_H),
+            h=_r(head_h),
             z=0,
             shape="rect",
             fill=COLOR_TABLE_HEAD,
         )
     )
-    put_row(block.header, y, bold=True, color=COLOR_TITLE)
+    put_row(block.header, y, head_h, bold=True, color=COLOR_TITLE)
 
     # 본문 행 + 행 아래 얇은 구분선
-    for r, cells in enumerate(block.rows):
-        row_y = y + (r + 1) * TABLE_ROW_H
-        put_row(cells, row_y, bold=False, color=COLOR_TEXT)
+    row_y = y + head_h
+    for cells, row_h in zip(block.rows, body_h, strict=True):
+        put_row(cells, row_y, row_h, bold=False, color=COLOR_TEXT)
+        row_y += row_h
         slide.elements.append(
             ShapeElement(
                 x=_r(region.x),
-                y=_r(row_y + TABLE_ROW_H),
+                y=_r(row_y),
                 w=_r(region.w),
                 h=0.008,
                 z=0,
@@ -415,8 +489,16 @@ def _place_kpi(slide: Slide, block: Kpi, y: float, region: Region) -> None:
     n = len(block.tiles)
     if n == 0:
         return
-    tile_w = (region.w - (n - 1) * KPI_GAP) / n
+    tile_w = _kpi_tile_w(block, region.w)
     inner_w = tile_w - 2 * KPI_PAD
+    # 한 행의 타일은 높이와 delta 자리를 함께 쓴다. 라벨이 가장 많이 접힌 타일이 행 높이를 정한다.
+    tile_h = _kpi_h(block, region.w)
+    delta_w = _kpi_delta_w(block)
+    label_w = _kpi_label_w(block, region.w)
+    value_h = _line_h(KPI_VALUE_SIZE)
+    label_h = _kpi_label_lines(block, region.w) * _line_h(KPI_LABEL_SIZE)
+    label_y = y + KPI_TOP_PAD + value_h + KPI_MID_GAP
+
     for i, tile in enumerate(block.tiles):
         tile_x = region.x + i * (tile_w + KPI_GAP)
         # 카드 배경
@@ -425,7 +507,7 @@ def _place_kpi(slide: Slide, block: Kpi, y: float, region: Region) -> None:
                 x=_r(tile_x),
                 y=_r(y),
                 w=_r(tile_w),
-                h=_r(KPI_H),
+                h=_r(tile_h),
                 z=0,
                 shape="roundRect",
                 fill=COLOR_CARD,
@@ -435,42 +517,42 @@ def _place_kpi(slide: Slide, block: Kpi, y: float, region: Region) -> None:
         slide.elements.append(
             TextElement(
                 x=_r(tile_x + KPI_PAD),
-                y=_r(y + 0.22),
+                y=_r(y + KPI_TOP_PAD),
                 w=_r(inner_w),
-                h=_r(0.5),
+                h=_r(value_h),
                 z=1,
                 text=tile.value,
-                size=24,
+                size=KPI_VALUE_SIZE,
                 bold=True,
                 color=COLOR_VALUE,
                 align="left",
             )
         )
-        # 라벨(왼쪽)
+        # 라벨(왼쪽). delta 자리를 뺀 폭만 쓴다.
         slide.elements.append(
             TextElement(
                 x=_r(tile_x + KPI_PAD),
-                y=_r(y + 0.74),
-                w=_r(inner_w),
-                h=_r(0.28),
+                y=_r(label_y),
+                w=_r(label_w),
+                h=_r(label_h),
                 z=1,
                 text=tile.label,
-                size=12,
+                size=KPI_LABEL_SIZE,
                 color=COLOR_MUTED,
                 align="left",
             )
         )
-        # delta(오른쪽, 부호로 색을 고른다)
+        # delta(오른쪽 끝, 부호로 색을 고른다). 첫 줄에만 붙는다.
         if tile.delta:
             slide.elements.append(
                 TextElement(
-                    x=_r(tile_x + KPI_PAD),
-                    y=_r(y + 0.74),
-                    w=_r(inner_w),
-                    h=_r(0.28),
+                    x=_r(tile_x + KPI_PAD + label_w),
+                    y=_r(label_y),
+                    w=_r(delta_w),
+                    h=_r(_line_h(KPI_LABEL_SIZE)),
                     z=1,
                     text=tile.delta,
-                    size=12,
+                    size=KPI_LABEL_SIZE,
                     bold=True,
                     color=_delta_color(tile.delta),
                     align="right",
